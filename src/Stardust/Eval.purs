@@ -73,4 +73,4 @@ runInterrupt next i = do
 externalInterrupts :: forall m. VM m => MonadRec m => m (Instruction Int Int Int) -> m Unit
 externalInterrupts next = do
   pendingEvents <- events
-  traverse_ (maybe (pure unit) (const $ runInterrupt next IO)) pendingEvents
+  traverse_ (const $ runInterrupt next IO) pendingEvents

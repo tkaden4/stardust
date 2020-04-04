@@ -22,7 +22,7 @@ class Monad m <= VM m where
   exit :: m Unit
   tick :: m Unit
   ticks :: m Int
-  events :: m (Array (Maybe Unit))
+  events :: m (Array Unit)
 
 halt :: forall m. VM m => m Unit
 halt = tick *> exit

@@ -3,7 +3,14 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
+  "scripts": {
+    "bundle": "pulp build && rollup -c && google-closure-compiler --js=build/bundle/index.js --js_output_file=build/optimized/index.js",
+    "run": "node build/optimized/index.js"
+  },
   "devDependencies": {
-    "electron": "^8.2.0"
+    "@rollup/plugin-commonjs": "^11.0.2",
+    "electron": "^8.2.0",
+    "google-closure-compiler": "^20200315.0.0",
+    "rollup": "^2.3.2"
   }
 }
