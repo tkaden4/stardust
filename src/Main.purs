@@ -2,20 +2,24 @@ module Main where
 
 import Prelude
 
+import Control.Monad.Free.Trans (runFreeT)
 import Control.Monad.Maybe.Trans (runMaybeT)
+import Control.Monad.Reader (runReaderT)
 import Control.Monad.State (evalStateT, runStateT)
 import Data.Int (toNumber)
+import Data.Lazy (force)
 import Data.Maybe (maybe)
 import Data.Newtype (unwrap)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Class.Console (log)
 import Effect.Exception (throw)
+import Effect.Ref as Ref
 import Graphics.Canvas (CanvasElement, Context2D, Dimensions)
 import Graphics.Canvas as Canvas
 import Stardust.Builder (Print, infinite)
 import Stardust.Debug as Debug
-import Stardust.Eval as Eval
+import Stardust.VM as VM
 import Web.HTML (window)
 import Web.HTML.Window (Window)
 import Web.HTML.Window as Window
@@ -27,7 +31,7 @@ dimensions window = do
   pure { height, width }
 
 prepareScreen :: Effect (Tuple Context2D CanvasElement)
-prepareScreen = do
+prepareScreen = do 
   elem <- Canvas.getCanvasElementById "mainCanvas" >>= maybe (throw "Unable to get mainCanvas element") (pure)
   ctx <- Canvas.getContext2D elem
   dim@{ width, height } <- window >>= dimensions
@@ -38,4 +42,4 @@ prepareScreen = do
 
 main :: Effect Unit
 main = do
-  void $ runMaybeT $ evalStateT (unwrap $ Eval.run (Debug.nextInstruction)) (Debug.VMState { ticks: 0 })
+  void $ evalStateT (VM.start Debug.evaluator) mempty

@@ -3,9 +3,10 @@ module Stardust.IO where
 import Data.Int.Bits
 import Prelude
 
-import Control.Monad.State (class MonadState, get, modify_)
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Effect.Aff (Aff)
-import Stardust.VM (class VM, Interrupt(..))
+import Effect.Class (class MonadEffect)
+import Effect.Class.Console (log)
 
-data Device m = Device Int (Int -> m Unit) (m Int) (m Unit)
+data Port m = Port (m Int) (Int -> m Unit)
+
+logger :: forall m. MonadEffect m => Port m
+logger = Port (log "Read" *> pure 0) (const $ log "Write")

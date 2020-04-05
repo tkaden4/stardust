@@ -2,8 +2,17 @@ module Stardust.VM where
 
 import Prelude
 
-import Data.Maybe (Maybe)
-import Stardust.Builder (Register(..))
+import Control.Monad.Rec.Class (class MonadRec, forever, untilJust)
+import Data.Array (range)
+import Data.Foldable (traverse_)
+import Data.Map (Map)
+import Data.Map as Map
+import Data.Maybe (Maybe, maybe)
+import Data.Traversable (traverse)
+import Debug.Trace (spy)
+import Stardust.Builder (Register(..), instructionPointer)
+import Stardust.IO (Port(..))
+import Stardust.Instructions (Instruction(..))
 
 data DataSize = Byte | DoubleWord | QuadWord
 
@@ -14,43 +23,76 @@ instance showDataSize :: Show DataSize where
 
 data Interrupt = Reset | VRef | IO | Invalid
 
-class Monad m <= VM m where
-  register :: Register -> m Int
-  setRegister :: Register -> Int -> m Unit
-  read :: DataSize -> Int -> m Int
-  write :: DataSize -> Int -> Int -> m Unit
-  exit :: m Unit
-  tick :: m Unit
-  ticks :: m Int
-  events :: m (Array Unit)
+type Registers m = { register :: Register -> m Int, setRegister :: Register -> Int -> m Unit }
+type Memory m = { read ::  DataSize -> Int -> m Int, write :: DataSize -> Int -> Int -> m Unit }
 
-halt :: forall m. VM m => m Unit
-halt = tick *> exit
+jmp :: forall m. Monad m => Registers m -> Int -> m Unit
+jmp {setRegister} v = void $ setRegister (Register 31) v
 
-jmp :: forall m. VM m => Int -> m Unit
-jmp v = void $ setRegister (Register 31) v <* tick
-
-swp :: forall m. VM m => Register -> Register -> m Unit
-swp a b = do
+swp :: forall m. Monad m => Registers m -> Register -> Register -> m Unit
+swp {register, setRegister} a b = do
   a' <- register a
-  tick
   b' <- register b
-  tick
   setRegister b a'
-  tick
   setRegister a b'
-  tick
 
-put :: forall m. VM m => DataSize -> Register -> Register -> m Unit
-put sz from to = do
+put :: forall m. Monad m => Registers m -> Memory m -> DataSize -> Register -> Register -> m Unit
+put {register} {write} sz from to = do
   from' <- register from
-  tick
   register to >>= write sz from'
-  tick
 
-get :: forall m. VM m => DataSize -> Register -> Register -> m Unit
-get sz from to = do
+get :: forall m. Monad m => Registers m -> Memory m -> DataSize -> Register -> Register -> m Unit
+get {register, setRegister} {read} sz from to = do
   from' <- register from
-  tick
   read sz from' >>= setRegister to
-  tick
+
+val :: forall m. Monad m => Registers m -> DataSize -> Register -> Int -> m Unit
+val {setRegister} _ register value = setRegister register value 
+
+handleInstruction :: forall m. Monad m => Registers m -> Memory m -> m Unit -> Instruction Int Int Int -> m Unit
+handleInstruction regs mem exit insn = case insn of
+  Hlt -> exit
+  Jmp addr -> jmp regs addr
+  Val a b -> val regs QuadWord (Register a) b
+  Swp a b -> swp regs (Register a) (Register b)
+  Put a b -> put regs mem QuadWord (Register a) (Register b)
+  Get a b -> get regs mem QuadWord (Register a) (Register b)
+  _ -> interrupt regs mem Invalid
+
+vector :: forall m. Monad m => Registers m -> Memory m -> Int -> m Unit
+vector {setRegister} {read} addr = do
+  vec <- read DoubleWord addr
+  setRegister instructionPointer vec
+
+interrupt :: forall m. Monad m => Registers m -> Memory m -> Interrupt -> m Unit
+interrupt regs mem Reset = vector regs mem 0xffc0
+interrupt regs mem VRef = vector regs mem 0xffc2
+interrupt regs mem IO = vector regs mem 0xffc4
+interrupt regs mem Invalid = vector regs mem 0xffc6
+
+type Evaluator m = { registers :: Registers m, memory :: Memory m, next :: m (Instruction Int Int Int), ports :: Map Int (Port m), ioInterrupts :: m (Maybe Unit)  }
+
+-- Map an address to either a port or a
+-- location in physical memory
+mmap :: forall m. Evaluator m -> Memory m
+mmap { ports, memory: { write, read } } = { read: mmapRead, write: mmapWrite }
+  where
+    mmapRead sz address = do
+      let port = Map.lookup address ports
+      maybe (read sz address) (\(Port r _) -> r) port
+    mmapWrite sz address value = do
+      let port = Map.lookup address ports
+      maybe (write sz address value) (\(Port _ w) -> w value) port
+
+start :: forall m. MonadRec m => Evaluator m -> m Unit
+start e@{ next, registers, memory } = do
+  let memoryMap = mmap e
+  interrupt registers memoryMap Reset
+  forever do
+    next >>= handleInstruction registers memoryMap (pure unit)
+    processInterrupts $ e { memory = memoryMap }
+
+processInterrupts :: forall m. Monad m => Evaluator m -> m Unit
+processInterrupts { ioInterrupts, registers, memory } = do
+  int <- ioInterrupts
+  maybe (pure unit) (const $ interrupt registers memory IO) int
