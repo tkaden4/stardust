@@ -2,13 +2,10 @@ module Stardust.VM where
 
 import Prelude
 
-import Control.Monad.Rec.Class (class MonadRec, forever, untilJust)
-import Data.Array (range)
-import Data.Foldable (traverse_)
+import Control.Monad.Rec.Class (class MonadRec, forever)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (Maybe, maybe)
-import Data.Traversable (traverse)
+import Data.Maybe (maybe)
 import Debug.Trace (spy)
 import Stardust.Builder (Register(..), instructionPointer)
 import Stardust.IO (Port(..))
@@ -25,6 +22,7 @@ data Interrupt = Reset | VRef | IO | Invalid
 
 type Registers m = { register :: Register -> m Int, setRegister :: Register -> Int -> m Unit }
 type Memory m = { read ::  DataSize -> Int -> m Int, write :: DataSize -> Int -> Int -> m Unit }
+type Evaluator m = { registers :: Registers m, memory :: Memory m, next :: m (Instruction Int Int Int), ports :: Map Int (Port m), pendingInterrupt :: m Boolean  }
 
 jmp :: forall m. Monad m => Registers m -> Int -> m Unit
 jmp {setRegister} v = void $ setRegister (Register 31) v
@@ -70,8 +68,6 @@ interrupt regs mem VRef = vector regs mem 0xffc2
 interrupt regs mem IO = vector regs mem 0xffc4
 interrupt regs mem Invalid = vector regs mem 0xffc6
 
-type Evaluator m = { registers :: Registers m, memory :: Memory m, next :: m (Instruction Int Int Int), ports :: Map Int (Port m), ioInterrupts :: m (Maybe Unit)  }
-
 -- Map an address to either a port or a
 -- location in physical memory
 mmap :: forall m. Evaluator m -> Memory m
@@ -93,6 +89,6 @@ start e@{ next, registers, memory } = do
     processInterrupts $ e { memory = memoryMap }
 
 processInterrupts :: forall m. Monad m => Evaluator m -> m Unit
-processInterrupts { ioInterrupts, registers, memory } = do
-  int <- ioInterrupts
-  maybe (pure unit) (const $ interrupt registers memory IO) int
+processInterrupts { pendingInterrupt, registers, memory } = do
+  whenM pendingInterrupt do
+    interrupt registers memory IO
