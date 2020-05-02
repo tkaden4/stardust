@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "bundle": "pulp build && rollup -c && google-closure-compiler --compilation_level SIMPLE --js=build/bundle/index.js --js_output_file=build/optimized/index.js",
-    "run": "node  build/optimized/index.js",
+    "run": "node build/optimized/index.js",
     "invoke": "yarn run bundle && yarn run run"
   },
   "devDependencies": {

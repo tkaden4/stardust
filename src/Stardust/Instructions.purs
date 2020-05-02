@@ -15,6 +15,7 @@ data Instruction a b c
   | Jgt a b c
   | Swp a b
   | Val a b
+  | Mov a b
   | Put a b
   | Get a b
   | Psh a

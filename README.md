@@ -1,11 +1,8 @@
 # stardust
 
-An interactive VM project in Typescript using `fp-ts`.
+A custom VM (IN PROGRESS).
 
 ## Specification
-
-Stardust is a register based virtual machine with basic input and output capabilities, meant to
-run in the browser and to be easily understood.
 
 ### Registers
 
@@ -17,7 +14,7 @@ Stardust has 64kb of RAM, making addresses `0x0000 – 0xffff` legal.
 
 ```
 +---0x0000---+
-General RAM (~32kb, actually 32704 bytes)
+General RAM (~32kb, actually 32,704 bytes)
 +--- 0x7fc0 ---+
 Video RAM (32kb)
 +---0xffc0---+
@@ -49,6 +46,8 @@ An invalid instruction was present in the instruction stream.
 
 ##### `0xffe0` : Keyboard
 
+##### `0xffe2` : Console Out
+
 #### Video
 
 Output is 16-bit color, 128x128 resolution. The video memory is stored starting
@@ -73,8 +72,10 @@ jgt <1> <2> <3>       # same as above, except when greater than
 swp <1> <2>           # swap the values of two registers
 val <1> #2            # load a big endian 32-bit value #2 into <1>
 
-put <1> <2> #3        # store the bottom #3 bytes of the value in <1> at address <2>
-get <1> <2> #3        # retrieve #3 bytes from address <1> and store it in the bottom #3 bytes of <2>
+put <1> <2>           # store the value in register <1> at address in register <2>
+get <1> <2>           # retrieve from address in register <2> and store it in register <1>
+
+mov #1 #2             # Move constant value #1 into address #2
 
 psh <1>               # put a value into the address at `S` and increment `S`
 pop <2>               # pop a value from the address at `S` and decrement `S`

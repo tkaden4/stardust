@@ -22,7 +22,7 @@ data Interrupt = Reset | VRef | IO | Invalid
 
 type Registers m = { register :: Register -> m Int, setRegister :: Register -> Int -> m Unit }
 type Memory m = { read ::  DataSize -> Int -> m Int, write :: DataSize -> Int -> Int -> m Unit }
-type Evaluator m = { registers :: Registers m, memory :: Memory m, next :: m (Instruction Int Int Int), ports :: Map Int (Port m), pendingInterrupt :: m Boolean  }
+type Evaluator m = { registers :: Registers m, memory :: Memory m, next :: m (Instruction Int Int Int), ports :: Map Int (Port m), pendingInterrupt :: m Boolean, exit :: m Unit  }
 
 jmp :: forall m. Monad m => Registers m -> Int -> m Unit
 jmp {setRegister} v = void $ setRegister (Register 31) v
@@ -40,12 +40,15 @@ put {register} {write} sz from to = do
   register to >>= write sz from'
 
 get :: forall m. Monad m => Registers m -> Memory m -> DataSize -> Register -> Register -> m Unit
-get {register, setRegister} {read} sz from to = do
+get {register, setRegister} {read} sz to from = do
   from' <- register from
   read sz from' >>= setRegister to
 
 val :: forall m. Monad m => Registers m -> DataSize -> Register -> Int -> m Unit
 val {setRegister} _ register value = setRegister register value 
+
+mov :: forall m. Monad m => Memory m -> DataSize -> Int -> Int -> m Unit
+mov {write} sz value addr = write sz addr value
 
 handleInstruction :: forall m. Monad m => Registers m -> Memory m -> m Unit -> Instruction Int Int Int -> m Unit
 handleInstruction regs mem exit insn = case insn of
@@ -55,12 +58,16 @@ handleInstruction regs mem exit insn = case insn of
   Swp a b -> swp regs (Register a) (Register b)
   Put a b -> put regs mem QuadWord (Register a) (Register b)
   Get a b -> get regs mem QuadWord (Register a) (Register b)
+  Mov a b -> mov mem QuadWord a b
   _ -> interrupt regs mem Invalid
 
 vector :: forall m. Monad m => Registers m -> Memory m -> Int -> m Unit
 vector {setRegister} {read} addr = do
   vec <- read DoubleWord addr
   setRegister instructionPointer vec
+
+saveState :: forall m. Monad m => Registers m -> m Unit
+saveState {register} = pure unit
 
 interrupt :: forall m. Monad m => Registers m -> Memory m -> Interrupt -> m Unit
 interrupt regs mem Reset = vector regs mem 0xffc0
@@ -81,11 +88,11 @@ mmap { ports, memory: { write, read } } = { read: mmapRead, write: mmapWrite }
       maybe (write sz address value) (\(Port _ w) -> w value) port
 
 start :: forall m. MonadRec m => Evaluator m -> m Unit
-start e@{ next, registers, memory } = do
+start e@{ next, registers, memory, exit } = do
   let memoryMap = mmap e
   interrupt registers memoryMap Reset
   forever do
-    next >>= handleInstruction registers memoryMap (pure unit)
+    next >>= handleInstruction registers memoryMap exit
     processInterrupts $ e { memory = memoryMap }
 
 processInterrupts :: forall m. Monad m => Evaluator m -> m Unit

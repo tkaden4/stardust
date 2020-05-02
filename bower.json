@@ -21,7 +21,9 @@
     "purescript-concurrent-queues": "^1.1.0",
     "purescript-monad-loops": "^0.5.0",
     "purescript-refs": "^4.1.0",
-    "purescript-debug": "^4.0.0"
+    "purescript-debug": "^4.0.0",
+    "purescript-sized-vectors": "^5.0.0",
+    "purescript-bytestrings": "^8.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^4.0.0"

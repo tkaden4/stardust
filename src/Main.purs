@@ -2,22 +2,23 @@ module Main where
 
 import Prelude
 
-import Control.Monad.Free.Trans (runFreeT)
+import Control.Monad.Except (runExcept)
 import Control.Monad.Maybe.Trans (runMaybeT)
-import Control.Monad.Reader (runReaderT)
-import Control.Monad.State (evalStateT, runStateT)
+import Control.Monad.State (evalStateT, execStateT, runStateT)
+import Data.Either (either)
+import Data.FoldableWithIndex (foldMapWithIndex)
 import Data.Int (toNumber)
-import Data.Lazy (force)
-import Data.Maybe (maybe)
-import Data.Newtype (unwrap)
+import Data.Map (Map)
+import Data.Map as Map
+import Data.Maybe (Maybe(..), maybe)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Effect.Class.Console (log)
+import Effect.Class.Console (log, logShow)
 import Effect.Exception (throw)
-import Effect.Ref as Ref
 import Graphics.Canvas (CanvasElement, Context2D, Dimensions)
 import Graphics.Canvas as Canvas
-import Stardust.Builder (Print, infinite)
+import Nova.Language (Expression(..), compile, compileTopLevel)
+import Nova.Stack (Named(..), printNamed, printProgram)
 import Stardust.Debug as Debug
 import Stardust.VM as VM
 import Web.HTML (window)
@@ -40,6 +41,22 @@ prepareScreen = do
   Canvas.fillRect ctx $ { x: 0.0, y: 0.0, width, height }
   pure $ Tuple ctx elem
 
+sampleProgram :: Array Expression
+sampleProgram = [
+  Def "const" (Lambda ["x", "y"] (Var "x")),
+  Def "id" (Lambda ["x"] (Var "x")),
+  Def "x" (Var "y"),
+  Apply (Var "const") [Var "id", Const 0x02],
+  Apply (Lambda [] $ Const 2) [Const 0xffff],
+  Def "yptr" $ Apply (Var "@ref") [Var "y"],
+  Apply (Var "@set") [Var "yptr", Const 0xff],
+  Apply (Var "id") [Apply (Var "@get") [Var "yptr"]],
+  Def "y" (Apply (Var "id") [Const 0xff00])
+]
+
 main :: Effect Unit
 main = do
-  void $ evalStateT (VM.start Debug.evaluator) mempty
+  -- void $ runMaybeT $ evalStateT (VM.start Debug.evaluator) mempty
+  let compiled = compileTopLevel (const Nothing) sampleProgram
+  let result = runExcept $ execStateT compiled { fresh: 0, definitions: Map.empty }
+  either logShow (\s -> log $ printProgram $ foldMapWithIndex (\n d -> [Named { name: n, def: d}]) s.definitions) result
